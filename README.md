@@ -6,7 +6,7 @@
 
 # <img src="./frontend/public/favicon.svg" alt="siot favicon" width="28" style="vertical-align:middle; margin-right:6px;" /> 시옷 (SIOT) - 일기를 시로 변환하는 웹 애플리케이션
 
-︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹
+︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹︶︶୨୧︶︶⊹︶︶⊹
 
 **AI 기반 한국어 시 생성 플랫폼**  
 일상의 내용을 담은 일기를 시로 변환하는 웹 애플리케이션입니다. SOLAR-10.7B-Instruct와 파인튜닝된 koGPT2 모델을 활용하여 고품질의 한국어 시를 생성합니다.
