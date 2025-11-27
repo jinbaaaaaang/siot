@@ -20,7 +20,25 @@ if (import.meta.env.DEV) {
 
 // API 호출 함수
 const callPoemAPI = async (apiBaseUrl, endpoint, requestBody, signal) => {
-    const apiUrl = `${apiBaseUrl}${endpoint}`
+    // apiBaseUrl이 절대 URL인지 확인 (http:// 또는 https://로 시작해야 함)
+    if (!apiBaseUrl || (!apiBaseUrl.startsWith('http://') && !apiBaseUrl.startsWith('https://'))) {
+        const errorMsg = `❌ 잘못된 API URL: ${apiBaseUrl}. 절대 URL이 필요합니다 (http:// 또는 https://로 시작).`
+        console.error(errorMsg)
+        throw new Error(errorMsg)
+    }
+    
+    // apiBaseUrl 끝의 슬래시 제거
+    const cleanBaseUrl = apiBaseUrl.replace(/\/$/, '')
+    // endpoint 앞의 슬래시 추가 (없으면)
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+    const apiUrl = `${cleanBaseUrl}${cleanEndpoint}`
+    
+    // 최종 URL이 절대 URL인지 다시 확인
+    if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+        const errorMsg = `❌ 잘못된 최종 API URL: ${apiUrl}. 절대 URL이 필요합니다.`
+        console.error(errorMsg)
+        throw new Error(errorMsg)
+    }
     
     // 헤더 설정
     const headers = {
@@ -28,7 +46,7 @@ const callPoemAPI = async (apiBaseUrl, endpoint, requestBody, signal) => {
     }
     
     // ngrok 무료 버전 경고 페이지 우회
-    if (apiBaseUrl.includes('ngrok-free.dev')) {
+    if (apiBaseUrl.includes('ngrok-free.dev') || apiUrl.includes('ngrok-free.dev')) {
         headers['ngrok-skip-browser-warning'] = 'true'
     }
     
@@ -36,25 +54,38 @@ const callPoemAPI = async (apiBaseUrl, endpoint, requestBody, signal) => {
         url: apiUrl,
         method: 'POST',
         headers,
-        body: requestBody
+        body: requestBody,
+        isAbsoluteUrl: apiUrl.startsWith('http://') || apiUrl.startsWith('https://')
     })
     
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(requestBody),
-        signal: signal,
-        mode: 'cors'  // CORS 명시적 설정
-    })
-    
-    console.log('📥 API 응답:', {
-        status: response.status,
-        statusText: response.statusText,
-        url: response.url,
-        ok: response.ok
-    })
-    
-    return response
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(requestBody),
+            signal: signal,
+            mode: 'cors',  // CORS 명시적 설정
+            credentials: 'omit'  // 쿠키 전송 안 함
+        })
+        
+        console.log('📥 API 응답:', {
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
+        })
+        
+        return response
+    } catch (fetchError) {
+        console.error('❌ fetch 오류 상세:', {
+            name: fetchError.name,
+            message: fetchError.message,
+            stack: fetchError.stack,
+            url: apiUrl
+        })
+        throw fetchError
+    }
 }
 
 // 커스텀 드롭다운 컴포넌트
@@ -133,15 +164,9 @@ function PoemGeneration() {
     const [error, setError] = useState(null)
     const [saved, setSaved] = useState(false)
     
-    // 프롬프트 옵션 상태
-    const [lines, setLines] = useState(4)
-    const [mood, setMood] = useState('')
-    const [requiredKeywords, setRequiredKeywords] = useState('')
-    const [bannedWords, setBannedWords] = useState('')
-    const [useRhyme, setUseRhyme] = useState(false)
-    const [showOptions, setShowOptions] = useState(false)
     const [modelType, setModelType] = useState('')  // 'solar' 또는 'kogpt2'
     const [useTrainedModel, setUseTrainedModel] = useState(false)  // 학습된 모델 사용 여부
+    const [loadingDots, setLoadingDots] = useState('')
     
     // 설정 로드 (컴포넌트 마운트 시)
     useEffect(() => {
@@ -162,6 +187,23 @@ function PoemGeneration() {
         }
     }, [])
 
+    useEffect(() => {
+        if (!loading) {
+            setLoadingDots('')
+            return
+        }
+
+        const dotSequence = ['', '.', '..', '...']
+        let index = 0
+
+        const intervalId = setInterval(() => {
+            index = (index + 1) % dotSequence.length
+            setLoadingDots(dotSequence[index])
+        }, 400)
+
+        return () => clearInterval(intervalId)
+    }, [loading])
+
     const handleSubmit = async (e) => {
         e.preventDefault()
         
@@ -179,20 +221,9 @@ function PoemGeneration() {
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 330000) // 5.5분 (백엔드 300초 + 여유)
             
-            // 옵션 파라미터 구성
-            // showOptions가 false이면 프롬프트 옵션을 전송하지 않음
+            // 요청 본문 구성
             const requestBody = {
                 text: text.trim(),
-                // 프롬프트 옵션이 열려있을 때만 전송
-                ...(showOptions && lines && lines !== 4 ? { lines } : {}),
-                ...(showOptions && mood.trim() ? { mood: mood.trim() } : {}),
-                ...(showOptions && requiredKeywords.trim() 
-                    ? { required_keywords: requiredKeywords.split(',').map(k => k.trim()).filter(k => k) } 
-                    : {}),
-                ...(showOptions && bannedWords.trim() 
-                    ? { banned_words: bannedWords.split(',').map(k => k.trim()).filter(k => k) } 
-                    : {}),
-                ...(showOptions && useRhyme ? { use_rhyme: true } : {}),
                 ...(modelType ? { model_type: modelType } : {}),
                 ...(useTrainedModel ? { use_trained_model: true } : {}),
             }
@@ -202,30 +233,66 @@ function PoemGeneration() {
             let apiBaseUrl = ''
             const endpoint = '/api/poem/generate'
             
+            console.log('🔍 모델 타입 확인:', {
+                modelType,
+                COLAB_API_URL: COLAB_API_URL || '(없음)',
+                LOCAL_API_URL
+            })
+            
             if (modelType === 'solar') {
-                // SOLAR 모델: Colab API 사용
-                if (!COLAB_API_URL) {
+                // SOLAR 모델: 반드시 Colab API 사용 (로컬 서버 사용 안 함)
+                if (!COLAB_API_URL || COLAB_API_URL.trim() === '') {
                     console.error('❌ SOLAR 모델을 사용하려면 코랩 URL이 필요합니다!')
+                    console.error('현재 COLAB_API_URL:', COLAB_API_URL)
                     console.warn('💡 .env 파일에 VITE_COLAB_API_URL을 설정하고 프론트엔드를 재시작하세요.')
                     setError('SOLAR 모델을 사용하려면 코랩 URL이 필요합니다. .env 파일에 VITE_COLAB_API_URL을 설정하고 프론트엔드를 재시작하세요.')
                     setLoading(false)
                     return
                 }
                 
-                apiBaseUrl = COLAB_API_URL
-                console.log('🌐 SOLAR 모델 선택됨 → Colab API 호출:', apiBaseUrl)
-                console.log('📡 Colab 서버에서 시 생성 중...')
+                // 로컬 서버 URL이 포함되어 있으면 에러
+                if (COLAB_API_URL.includes('localhost') || COLAB_API_URL.includes('127.0.0.1') || COLAB_API_URL.includes(':8000')) {
+                    console.error('❌ SOLAR 모델은 로컬 서버를 사용할 수 없습니다!')
+                    console.error('현재 COLAB_API_URL:', COLAB_API_URL)
+                    setError('SOLAR 모델은 코랩 서버만 사용 가능합니다. .env 파일의 VITE_COLAB_API_URL을 코랩 ngrok URL로 설정해주세요.')
+                    setLoading(false)
+                    return
+                }
+                
+                // 절대 URL인지 확인 (http:// 또는 https://로 시작해야 함)
+                const trimmedUrl = COLAB_API_URL.trim()
+                if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+                    console.error('❌ COLAB_API_URL이 절대 URL이 아닙니다!')
+                    console.error('현재 COLAB_API_URL:', trimmedUrl)
+                    console.error('💡 절대 URL이 필요합니다 (예: https://xxxx.ngrok-free.dev)')
+                    setError('COLAB_API_URL이 올바른 형식이 아닙니다. https://로 시작하는 절대 URL이 필요합니다.')
+                    setLoading(false)
+                    return
+                }
+                
+                apiBaseUrl = trimmedUrl
+                console.log('🌐 SOLAR 모델 선택됨 → Colab API로 요청 전송')
+                console.log('📡 Colab 서버 URL:', apiBaseUrl)
+                console.log('⚠️ 주의: 로컬 서버가 아닌 Colab 서버로 요청이 전송됩니다!')
+                console.log('✅ 로컬 서버로 요청하지 않습니다!')
+                console.log('✅ 절대 URL 확인됨:', apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://'))
             } else {
                 // koGPT2 모델 또는 모델 미선택: 로컬 서버 사용
                 apiBaseUrl = LOCAL_API_URL.replace('/api/poem/generate', '')  // base URL만 추출
-                if (!apiBaseUrl) {
+                if (!apiBaseUrl || apiBaseUrl === LOCAL_API_URL) {
                     apiBaseUrl = 'http://localhost:8000'
                 }
-                console.log('💻 로컬 API 사용 (koGPT2):', apiBaseUrl)
+                console.log('💻 koGPT2 모델 선택됨 → 로컬 서버 사용:', apiBaseUrl)
             }
             
             // API 호출 (SOLAR 모델이면 Colab, 아니면 로컬)
-            console.log('🚀 API 요청 시작:', { modelType, apiBaseUrl, endpoint })
+            console.log('🚀 API 요청 시작:', { 
+                modelType, 
+                apiBaseUrl, 
+                endpoint,
+                fullUrl: `${apiBaseUrl}${endpoint}`,
+                isColab: modelType === 'solar'
+            })
             const response = await callPoemAPI(apiBaseUrl, endpoint, requestBody, controller.signal)
             
             clearTimeout(timeoutId)
@@ -280,22 +347,31 @@ function PoemGeneration() {
             if (err.name === 'AbortError') {
                 setError('시 생성 시간이 너무 오래 걸려 중단되었습니다. 첫 요청은 모델 로딩으로 5분 이상 걸릴 수 있습니다. 잠시 후 다시 시도해주세요.')
             } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                // 상세한 에러 정보 로깅
+                console.error('❌ 네트워크 오류 상세:', {
+                    name: err.name,
+                    message: err.message,
+                    stack: err.stack,
+                    modelType,
+                    COLAB_API_URL,
+                    apiBaseUrl: modelType === 'solar' ? COLAB_API_URL : 'localhost:8000'
+                })
+                
                 let errorMsg = '서버에 연결할 수 없습니다.\n\n'
                 
                 if (modelType === 'solar' && COLAB_API_URL) {
-                    errorMsg += '🔍 문제 해결 방법:\n\n'
-                    errorMsg += '1️⃣ Colab 서버 상태 확인:\n'
-                    errorMsg += `   - URL: ${COLAB_API_URL}\n`
-                    errorMsg += '   - Colab 노트북에서 서버가 실행 중인지 확인\n\n'
-                    errorMsg += '2️⃣ Colab에서 서버 재시작:\n'
-                    errorMsg += '   %cd /content/siot-OSS/backend\n'
-                    errorMsg += '   !python colab_server.py\n\n'
-                    errorMsg += '3️⃣ 새로운 ngrok URL 확인:\n'
-                    errorMsg += '   서버 실행 후 출력된 "공개 URL" 복사\n\n'
-                    errorMsg += '4️⃣ .env 파일 업데이트:\n'
-                    errorMsg += '   VITE_COLAB_API_URL=https://새로운-ngrok-url.ngrok-free.dev\n\n'
-                    errorMsg += '5️⃣ 프론트엔드 재시작:\n'
-                    errorMsg += '   npm run dev\n'
+                    errorMsg += '🔍 디버깅 정보:\n'
+                    errorMsg += `   - 요청 URL: ${COLAB_API_URL}/api/poem/generate\n`
+                    errorMsg += `   - 에러: ${err.message}\n\n`
+                    errorMsg += '💡 해결 방법:\n'
+                    errorMsg += '1. 브라우저에서 ngrok URL 직접 접속:\n'
+                    errorMsg += `   ${COLAB_API_URL}\n`
+                    errorMsg += '   → "Visit Site" 버튼 클릭 (ngrok 경고 페이지 우회)\n\n'
+                    errorMsg += '2. 브라우저 콘솔(F12)에서 Network 탭 확인:\n'
+                    errorMsg += '   - 요청이 실제로 전송되었는지 확인\n'
+                    errorMsg += '   - CORS 오류가 있는지 확인\n\n'
+                    errorMsg += '3. 서버 상태 확인:\n'
+                    errorMsg += `   curl -H "ngrok-skip-browser-warning: true" ${COLAB_API_URL}/health\n`
                 } else if (modelType !== 'solar') {
                     errorMsg += '로컬 백엔드 서버가 실행 중인지 확인해주세요.\n'
                     errorMsg += '서버 실행: cd backend && python -m uvicorn app.main:app --reload'
@@ -317,13 +393,9 @@ function PoemGeneration() {
         setResult(null)
         setError(null)
         setSaved(false)
-        setLines(4)
-        setMood('')
-        setRequiredKeywords('')
-        setBannedWords('')
-        setUseRhyme(false)
         setModelType('')
         setUseTrainedModel(false)
+        setLoadingDots('')
     }
 
     const handleSavePoem = (poemResult = null) => {
@@ -440,115 +512,13 @@ function PoemGeneration() {
                     )}
                 </div>
 
-                {/* 프롬프트 옵션 */}
-                <div className="rounded-lg p-4 border border-gray-600">
-                    <button
-                        type="button"
-                        onClick={() => setShowOptions(!showOptions)}
-                        className="w-full flex items-center justify-between text-sm font-medium text-gray-800"
-                    >
-                        <span>프롬프트 옵션 {showOptions ? '▼' : '▶'}</span>
-                        <span className="text-xs text-gray-600">선택사항</span>
-                    </button>
-                    
-                    {showOptions && (
-                        <div className="mt-4 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* 줄 수 */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-800 mb-1">
-                                        줄 수
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="2"
-                                        max="20"
-                                        value={lines}
-                                        onChange={(e) => setLines(parseInt(e.target.value) || 4)}
-                                        className="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
-                                        disabled={loading}
-                                    />
-                                </div>
-
-                                {/* 분위기 */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-800 mb-1">
-                                        분위기
-                                    </label>
-                                    <CustomDropdown
-                                        value={mood}
-                                        onChange={setMood}
-                                        options={[
-                                            { value: '잔잔한', label: '잔잔한' },
-                                            { value: '담담한', label: '담담한' },
-                                            { value: '쓸쓸한', label: '쓸쓸한' },
-                                            { value: '따뜻한', label: '따뜻한' },
-                                            { value: '설레는', label: '설레는' },
-                                            { value: '지친', label: '지친' },
-                                        ]}
-                                        placeholder="자동 분석"
-                                        disabled={loading}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* 필수 키워드 */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-800 mb-1">
-                                        필수 키워드
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={requiredKeywords}
-                                        onChange={(e) => setRequiredKeywords(e.target.value)}
-                                        placeholder="쉼표로 구분"
-                                        className="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
-                                        disabled={loading}
-                                    />
-                                </div>
-
-                                {/* 금칙어 */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-800 mb-1">
-                                        금칙어
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={bannedWords}
-                                        onChange={(e) => setBannedWords(e.target.value)}
-                                        placeholder="쉼표로 구분"
-                                        className="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
-                                        disabled={loading}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* 운율 토글 */}
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="use-rhyme"
-                                    checked={useRhyme}
-                                    onChange={(e) => setUseRhyme(e.target.checked)}
-                                    className="w-4 h-4 text-[#79A9E6] border-gray-600 rounded focus:ring-gray-400"
-                                    disabled={loading}
-                                />
-                                <label htmlFor="use-rhyme" className="text-xs font-medium text-gray-800">
-                                    두운/두행두운(간단 운율) 사용
-                                </label>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
                 <div className="flex gap-3">
                     <button
                         type="submit"
                         disabled={loading || !text.trim()}
-                        className="px-6 py-3 bg-transparent border border-gray-800 text-gray-800 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-600 disabled:cursor-not-allowed transition-colors"
+                        className="w-40 px-6 py-3 bg-transparent border border-gray-800 text-gray-800 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-600 disabled:cursor-not-allowed transition-colors text-center"
                     >
-                        {loading ? '시 생성 중...' : '시 생성하기'}
+                        {loading ? `시 생성 중${loadingDots}` : '시 생성하기'}
                     </button>
                     
                     {result && (
