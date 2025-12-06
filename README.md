@@ -141,7 +141,11 @@
 
 ```
 원본 일상글:
-오늘은 머릿속이 온통 '앞일' 생각으로 가득했다. 해야 할 것과 잘해야만 할 것들이 줄줄이 떠오르면서, 가만히 있어도 마음이 바빠지는 느낌이었다. 계획을 세워 보려고 노트를 펼쳤는데, 글자보다 걱정이 먼저 적히는 것 같았다. 그렇다고 멈출 수는 없으니까, 아주 작은 일부터 하나씩 체크해 나가 보기로 했다. 불안이 완전히 사라지진 않겠지만, 그래도 조금씩 줄어들길 바라고 있다.
+오늘은 머릿속이 온통 '앞일' 생각으로 가득했다. 
+해야 할 것과 잘해야만 할 것들이 줄줄이 떠오르면서, 가만히 있어도 마음이 바빠지는 느낌이었다. 
+계획을 세워 보려고 노트를 펼쳤는데, 글자보다 걱정이 먼저 적히는 것 같았다.
+그렇다고 멈출 수는 없으니까, 아주 작은 일부터 하나씩 체크해 나가 보기로 했다. 
+불안이 완전히 사라지진 않겠지만, 그래도 조금씩 줄어들길 바라고 있다.
 
 생성된 시 (SOLAR 모델):
 줄줄이 체크해
@@ -220,10 +224,12 @@ Settings 페이지에서는 기본 모델 선택, 자동 저장 기능, 데이�
 
 시옷은 두 가지 모델을 제공하며, 각 모델은 서로 다른 스타일의 시를 생성합니다:
 
-**SOLAR**: 한 줄에 여러 이미지를 압축해 넣는 편이며, 은유·상징을 자연스럽게 섞어 묵직한 고전 시 분위기를 만듭니다. 줄 수를 많이 지정하지 않아도 스스로 호흡을 조절하고, 감정 톤을 부드럽게 감싸는 경향이 있습니다.  
-**koGPT2**: 감정과 사건을 비교적 직접적으로 서술해 현대 자유시·일기체에 가깝고, 줄 수·분위기·필수 키워드 옵션에 따라 표현이 즉시 달라집니다. 구어체에 가까운 말투나 솔직한 감정 표현을 원하는 경우 더 자연스럽게 느껴집니다.
+**SOLAR**: 한 줄에 여러 이미지를 압축해 넣는 편이며, 은유·상징을 자연스럽게 섞어 묵직한 고전 시 분위기를 만듭니다.   
+**koGPT2**: 감정과 사건을 비교적 직접적으로 서술해 현대 자유시·일기체에 가깝습니다. 구어체에 가까운 말투나 솔직한 감정 표현을 원하는 경우 더 자연스럽게 느껴집니다.
 
 ### 시 생성 파이프라인 흐름도
+
+**1단계: 입력 및 메타데이터 추출**
 
 ```mermaid
 flowchart LR
@@ -233,34 +239,40 @@ flowchart LR
     C -->|koGPT2| E[로컬 API<br/>호출]
     D --> F[API 요청<br/>/api/poem/generate]
     E --> F
-    
     F --> G[메타데이터<br/>추출]
     G --> H[키워드 추출<br/>TF-IDF]
     G --> I[감정 분석<br/>XNLI]
-    
     H --> J[프롬프트 구성<br/>키워드 + 분위기]
     I --> J
-    
-    J --> K{모델 타입}
-    K -->|SOLAR| L[SOLAR 모델<br/>Colab GPU]
-    K -->|koGPT2| M[koGPT2 모델<br/>로컬 CPU]
-    
-    L --> N[시 생성<br/>토크나이즈 + 추론]
-    M --> N
-    
-    N --> O[텍스트 후처리<br/>poem_text_processor.py]
-    O --> P[번역 처리<br/>translator.py]
-    P --> Q[응답 조립<br/>JSON 구성]
-    
-    Q --> R[프론트엔드<br/>결과 표시]
-    R --> S[localStorage<br/>자동 저장]
-    S --> T[EmotionTrend<br/>Archive 활용]
     
     style A fill:#e1f5ff
     style B fill:#e1f5ff
     style G fill:#fff4e1
     style H fill:#fff4e1
     style I fill:#fff4e1
+    style J fill:#fff4e1
+```
+
+<div style="text-align: center; margin: 10px 0;">
+  <strong>↓</strong>
+</div>
+
+**2단계: 시 생성 및 결과 처리**
+
+```mermaid
+flowchart LR
+    J[프롬프트 구성<br/>키워드 + 분위기] --> K{모델 타입}
+    K -->|SOLAR| L[SOLAR 모델<br/>Colab GPU]
+    K -->|koGPT2| M[koGPT2 모델<br/>로컬 CPU]
+    L --> N[시 생성<br/>토크나이즈 + 추론]
+    M --> N
+    N --> O[텍스트 후처리<br/>poem_text_processor.py]
+    O --> P[번역 처리<br/>translator.py]
+    P --> Q[응답 조립<br/>JSON 구성]
+    Q --> R[프론트엔드<br/>결과 표시]
+    R --> S[localStorage<br/>자동 저장]
+    S --> T[EmotionTrend<br/>Archive 활용]
+    
     style J fill:#fff4e1
     style L fill:#fce4ec
     style M fill:#e8f5e9
@@ -285,7 +297,39 @@ flowchart LR
   - **감정 라벨 (13가지)**: 기쁨, 슬픔, 분노, 놀람, 두려움, 혐오, 사랑, 그리움, 평온, 불안, 희망, 실망, 중립
   - **감정 → 분위기 매핑**: 분류된 감정은 자동으로 분위기로 변환되어 시 생성 프롬프트에 포함됩니다 (예: 기쁨 → "밝은", 슬픔 → "쓸쓸한", 사랑 → "따뜻한").
   - 각 감정에 대한 신뢰도 점수를 제공하며, 가장 높은 점수를 받은 감정이 최종 분류 결과가 됩니다.
-- **프롬프트 구성** (`poem_prompt_builder.py`): SOLAR는 chat template 형식, koGPT2는 단순 텍스트 프롬프트 형식으로 구성합니다. 추출된 키워드와 분위기를 프롬프트에 포함시켜 시의 내용과 톤을 제어합니다.
+- **프롬프트 구성** (`poem_prompt_builder.py`): 각 모델의 특성에 맞게 프롬프트를 구성합니다.
+  - **SOLAR 모델**: Instruct 모델 특성에 맞춰 영어 기반 chat template 형식을 사용합니다. SOLAR는 시 생성 전용으로 학습된 모델이 아니기 때문에, 프롬프트에서 시의 정의와 예시를 제공하고, 산문/일기체 표현을 금지하며, 은유와 상징 사용을 강조합니다. 키워드와 분위기를 자연스럽게 반영하도록 구성합니다.
+    
+    **SOLAR 프롬프트 예시:**
+    ```
+    System: You are a Korean-language poet. Write poems ONLY in Korean...
+    
+    User: Write a Korean poem with at least 4 lines.
+    **Required keywords**: XXXX
+    **Mood**: XXX
+    - Do NOT use declarative endings: "~다", "~이다", "~했다"
+    - Do NOT use subjects: "나는", "그는", "오늘은"
+    - Use metaphors and symbols (꽃처럼, 별처럼, 바람처럼)
+    - Each line should be short (5-12 characters)
+    ```
+  
+  - **koGPT2 모델**: 학습 시 사용한 "산문: ...\n시: ..." 패턴을 유지합니다. 원본 텍스트의 내용을 최대한 보존하면서 표현만 시적으로 변환하도록 강조하며, 요약이나 새로운 내용 추가를 금지합니다. 한국어로 직접 지시하여 모델이 학습한 패턴과 일치하도록 구성합니다.
+    
+    **koGPT2 프롬프트 예시:**
+    ```
+    아래 산문을 한국어 시로 바꿔주세요.
+    
+    요구 사항 (매우 중요):
+    - 요약 금지: 산문 속 문장/구절 하나하나의 정보를 가능한 한 모두 살리세요.
+    - 추가 금지: 원문에 없는 인물, 장소, 사건을 새로 만들지 마세요.
+    - 표현만 더 시처럼 바꾸는 것이 목표입니다.
+    - 분위기(톤): XXX
+    - 키워드: XXXX
+    
+    산문: XXXXXXXXX
+    
+    시:
+    ```
 
 ### 3. 시 생성 (`poem_generator.py`)
 - **토크나이즈**: 프롬프트를 모델의 토크나이저로 인코딩합니다.
@@ -427,34 +471,26 @@ flowchart LR
 
 ### 학습 파이프라인 흐름도
 
+**1단계: 데이터 준비 및 학습**
+
 ```mermaid
 flowchart LR
     A[KPoEM 데이터셋<br/>Hugging Face] --> B[데이터 준비<br/>다운로드 및 정규화]
     B --> C[k-fold 분할<br/>5개 fold]
-    
     C --> D[Fold 1<br/>학습]
     C --> E[Fold 2<br/>학습]
     C --> F[Fold 3<br/>학습]
     C --> G[Fold 4<br/>학습]
     C --> H[Fold 5<br/>학습]
-    
     D --> I[토크나이저<br/>준비]
     E --> I
     F --> I
     G --> I
     H --> I
-    
     I --> J[데이터셋<br/>전처리]
     J --> K[Trainer API<br/>학습 실행]
     K --> L[Validation<br/>평가]
     L --> M[Checkpoint<br/>저장]
-    
-    M --> N[모든 Fold<br/>학습 완료]
-    N --> O[평가 및 선별<br/>evaluate_folds_colab.py]
-    O --> P[성능 평가<br/>시 품질, 키워드, 감정, BERTScore]
-    P --> Q[최적 Fold<br/>선정]
-    Q --> R[배포 준비<br/>trained_models/ 복사]
-    R --> S[자동 로드<br/>FastAPI 서버]
     
     style A fill:#e1f5ff
     style B fill:#fff4e1
@@ -468,6 +504,24 @@ flowchart LR
     style J fill:#e0f2f1
     style K fill:#e0f2f1
     style L fill:#e0f2f1
+    style M fill:#e0f2f1
+```
+
+<div style="text-align: center; margin: 10px 0;">
+  <strong>↓</strong>
+</div>
+
+**2단계: 평가 및 배포**
+
+```mermaid
+flowchart LR
+    M[Checkpoint<br/>저장] --> N[모든 Fold<br/>학습 완료]
+    N --> O[평가 및 선별<br/>evaluate_folds_colab.py]
+    O --> P[성능 평가<br/>시 품질, 키워드, 감정, BERTScore]
+    P --> Q[최적 Fold<br/>선정]
+    Q --> R[배포 준비<br/>trained_models/ 복사]
+    R --> S[자동 로드<br/>FastAPI 서버]
+    
     style M fill:#e0f2f1
     style N fill:#fce4ec
     style O fill:#fce4ec
@@ -767,7 +821,7 @@ graph TB
 ```
 프론트엔드 (localhost:5173) → ngrok 터널 → Colab 백엔드 (포트 8000) → SOLAR GPU 모델
 ```
-> ⚠️ **SOLAR 모델 사용 시**: Google Colab에서 `GPU_backend.ipynb` 실행 후 ngrok 터널링이 필수입니다. 로컬 환경에서는 SOLAR 실행이 어렵습니다.
+> **SOLAR 모델 사용 시**: Google Colab에서 `GPU_backend.ipynb` 실행 후 ngrok 터널링이 필수입니다. 로컬 환경에서는 SOLAR 실행이 어렵습니다.
 
 ## ☆ 기술 스택
 
@@ -1059,4 +1113,4 @@ Google Cloud Translation API와 Gemini API는 Google의 API 서비스를 사용�
 
 ---
 
-**프로젝트 기간**: 2025.10.26 ~ 2025.12.05
+**프로젝트 기간**: 2025.10.26 ~ 2025.12.06
